@@ -1,0 +1,20 @@
+databases:
+  - name: boss-hunter-db
+    databaseName: boss_hunter
+    plan: free
+    region: singapore
+
+services:
+  - type: web
+    name: boss-hunter-60
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: boss-hunter-db
+          property: connectionString
