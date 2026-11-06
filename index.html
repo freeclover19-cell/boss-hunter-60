@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOSS Hunter｜60频道刷新预测与调度器</title>
+<style>
+:root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#182230;background:#f4f6f8}
+*{box-sizing:border-box}body{margin:0;padding:22px}button,input,select{font:inherit}
+.wrap{max-width:1180px;margin:auto}.header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}
+h1{font-size:25px;margin:0 0 6px}.sub{color:#667085;font-size:13px;line-height:1.6}
+.panel{background:#fff;border:1px solid #e4e7ec;border-radius:14px;padding:17px;margin-bottom:15px;box-shadow:0 2px 8px #10182808}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.stat{background:#f8fafc;border-radius:10px;padding:13px}.stat b{display:block;font-size:24px;margin-top:4px}.muted{color:#667085;font-size:12px}
+.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:15px}.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{border:0;border-radius:9px;padding:10px 13px;cursor:pointer;background:#eef2f6;color:#263445;font-weight:600}
+button.primary{background:#176b48;color:white}button.dark{background:#263445;color:white}button.danger{background:#fff0f0;color:#b42318}button:disabled{opacity:.45;cursor:not-allowed}
+input,select{border:1px solid #d0d5dd;border-radius:8px;padding:9px;background:white;color:#182230}
+label{font-size:13px;color:#475467}.field{display:flex;flex-direction:column;gap:6px;min-width:120px}
+.recommend{background:#effaf4;border:1px solid #b7e4c7;border-radius:12px;padding:15px}
+.recommend h2{margin:5px 0 8px;font-size:27px}
+.rec-list{display:grid;gap:6px;margin:12px 0 0;padding:0;list-style:none}
+.rec-list li{display:flex;align-items:flex-start;gap:9px;background:#fff;border:1px solid #dcefe3;border-radius:8px;padding:8px 10px;font-size:13px}
+.rec-rank{flex:0 0 23px;height:23px;border-radius:50%;display:grid;place-items:center;background:#d9f5e5;color:#176b48;font-weight:700}
+.rec-detail{min-width:0}.rec-detail strong{display:block;margin-bottom:2px}.rec-detail small{color:#667085;line-height:1.4}.tag{display:inline-block;border-radius:30px;padding:4px 8px;font-size:11px;font-weight:700;background:#e9eef5;color:#475467}
+.tag.green{background:#d9f5e5;color:#176b48}.tag.yellow{background:#fff3cd;color:#8a5a00}.tag.red{background:#fee4e2;color:#b42318}
+.channel-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}
+.ch{border:1px solid #e4e7ec;border-radius:9px;padding:9px 6px;text-align:center;cursor:pointer;background:#fff}
+.ch strong{display:block;font-size:14px}.ch small{display:block;font-size:10px;color:#667085;margin-top:4px}
+.ch.selected{outline:2px solid #176b48}.ch.present{background:#effaf4;border-color:#9bd6b2}.ch.absent{background:#f8fafc}.ch.unknown{background:#fff}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:9px 7px;border-bottom:1px solid #eef0f2}th{color:#667085;font-weight:600}
+.log{max-height:250px;overflow:auto}.note{font-size:12px;color:#667085;line-height:1.65}
+.pill{font-size:12px;border-radius:6px;padding:3px 7px;background:#f2f4f7}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#263445;color:white;padding:10px 16px;border-radius:9px;display:none;z-index:10}
+@media(max-width:800px){body{padding:12px}.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.channel-grid{grid-template-columns:repeat(5,1fr)}.header{display:block}}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <div class="header">
+  <div><h1>🎯 BOSS Hunter</h1><div class="sub">60频道刷新预测与动态调度｜多人云端共享</div></div>
+  <div class="controls"><span id="saveStatus" class="pill">正在检查本地保存…</span><button id="exportBtn">导出数据</button><button id="importBtn">导入数据</button><button id="resetBtn" class="danger">清空全部数据</button><input id="fileInput" type="file" accept=".json,application/json" hidden></div>
+ </div>
+
+ <section class="panel">
+  <div class="stats">
+   <div class="stat"><span class="muted">累计击杀</span><b id="kills">0</b></div>
+   <div class="stat"><span class="muted">空频道记录</span><b id="misses">0</b></div>
+   <div class="stat"><span class="muted">已建立记录频道</span><b id="tracked">0/60</b></div>
+   <div class="stat"><span class="muted">本轮游戏时间</span><b id="elapsed">00:00</b></div>
+  </div>
+ </section>
+
+ <div class="grid">
+  <section class="panel">
+   <h3 style="margin:0 0 12px">游戏计时</h3>
+   <div class="controls">
+    <div class="field"><label for="mode">时间模式</label><select id="mode"><option value="unlimited">不限时间</option><option value="fixed">固定时长</option></select></div>
+    <div class="field" id="durationWrap" style="display:none"><label for="duration">时长（分钟）</label><input id="duration" type="number" min="1" max="1440" value="120"></div>
+    <button class="primary" id="startSession">开始 / 继续</button><button id="pauseSession">暂停</button><button id="endSession" class="danger">结束本轮</button>
+   </div>
+   <p class="note" id="sessionText">尚未开始本轮。固定时长模式会在预计无法完成下一次移动+击杀时提示。</p>
+   <hr style="border:0;border-top:1px solid #eef0f2;margin:14px 0">
+   <h3 style="margin:0 0 12px">时间成本设置</h3>
+   <div class="controls">
+    <div class="field"><label for="travel">抵达耗时（秒）</label><input id="travel" type="number" min="0" value="100"></div>
+    <div class="field"><label for="kill">击杀耗时（秒）</label><input id="kill" type="number" min="0" value="30"></div>
+   </div>
+   <p class="note">默认每次切频道并抵达100秒，击杀30秒。推荐算法按“现在出发、抵达时的预计状态”计算。</p>
+  </section>
+
+  <section class="panel">
+   <h3 style="margin:0 0 12px">下一频道推荐</h3>
+   <div class="recommend" id="recommendBox">
+    <span class="tag">等待数据</span><h2 id="recChannel">先记录频道</h2>
+    <div id="recReason" class="note">第一次没有刷新时间数据时，程序无法知道哪些频道有BOSS。先探索频道并记录结果，数据越多推荐越准确。</div>
+    <ol class="rec-list" id="recList" aria-label="前五个推荐频道"></ol>
+   </div>
+   <div class="controls" style="margin-top:11px">
+    <button class="primary" id="selectRec">选中第1推荐</button><button id="selectAlt">选中第2推荐</button>
+   </div>
+   <p class="note" id="altText">备选频道：暂无</p>
+  </section>
+ </div>
+
+ <section class="panel">
+  <h3 style="margin:0 0 5px">记录当前频道结果</h3>
+  <p class="note">先选择你实际抵达的频道，再点击对应结果。按钮会自动使用当前设备时间；“发现BOSS”不等于击杀成功，击杀完成后再点“击杀成功”。</p>
+  <div class="controls" style="margin:12px 0">
+   <div class="field"><label for="channelSelect">当前频道</label><select id="channelSelect"></select></div>
+   <label style="display:flex;align-items:center;gap:6px;margin:0 4px"><input id="manualTimeEnabled" type="checkbox" style="width:auto">手动指定记录时间</label>
+   <div class="field"><label for="recordTime">记录时间（可修改）</label><input id="recordTime" type="datetime-local" step="1" disabled></div>
+   <button id="killBtn" class="dark">击杀成功（完成击杀）</button>
+   <button id="absentBtn">未刷新（已抵达）</button>
+   <button id="presentBtn" class="primary">发现BOSS（已抵达）</button>
+  </div>
+  <div class="note" id="selectedInfo">选择频道后显示该频道的记录摘要。</div>
+  <p class="note">默认使用点击按钮时的设备当前时间。勾选“手动指定记录时间”后，可修改日期和时分秒；手动时间将同时用于发现BOSS、未刷新和击杀成功三种操作。</p>
+ </section>
+
+ <section class="panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+   <div><h3 style="margin:0 0 4px">60频道状态</h3><div class="note">绿色：最近确认有BOSS｜灰色：最近确认未刷新｜白色：尚无记录</div></div>
+   <div class="controls"><select id="filter"><option value="all">全部频道</option><option value="present">最近有BOSS</option><option value="absent">最近未刷新</option><option value="unknown">未记录</option></select><button id="sortBtn">按频道编号排序</button></div>
+  </div>
+  <div class="channel-grid" id="channelGrid" style="margin-top:13px"></div>
+ </section>
+
+ <section class="panel">
+  <h3 style="margin:0 0 8px">频道数据明细</h3>
+  <div style="overflow:auto;max-height:380px">
+   <table><thead><tr><th>频道</th><th>最近状态</th><th>上次击杀</th><th>刷新区间</th><th>下次推荐信息</th></tr></thead><tbody id="detailBody"></tbody></table>
+  </div>
+  <p class="note">刷新概率仅对“已知死亡时间、且死亡后未出现新的外部击杀迹象”的频道计算。若超过理论最晚刷新时间仍观察到未刷新，程序会提示可能有其他玩家已击杀，原死亡时间模型失效。</p>
+ </section>
+
+ <section class="panel">
+  <h3 style="margin:0 0 8px">最近操作记录</h3>
+  <div class="log"><table><thead><tr><th>时间</th><th>频道</th><th>操作</th><th>说明</th></tr></thead><tbody id="logBody"></tbody></table></div>
+ </section>
+ <p class="note">数据自动同步到云端共享数据库，并保留当前设备本地备份。所有玩家看到同一份频道记录。建议定期导出 JSON 备份。设备时间需要准确；所有观察结果由玩家手动记录。</p>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const KEY='bossHunter60_cloud_v1';
+const BACKUP_KEY='bossHunter60_v1_backup';
+let storageWarning='';
+const now=()=>Date.now();
+const fmt=t=>t?new Date(t).toLocaleString('zh-CN',{hour12:false}):'—';
+const toLocalInput=t=>{const d=new Date(t);const z=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`};
+const mins=n=>Math.max(0,n)/60000;
+const pad=n=>String(n).padStart(2,'0');
+let state=load();
+let selected=1, sortAsc=true, ticker=null;
+let remoteReady=false, remoteBusy=false, remoteTimer=null;
+let operatorName=localStorage.getItem('bossHunter60_operator')||'';
+if(!operatorName){operatorName=(prompt('请输入你的玩家昵称（用于操作记录）')||'匿名玩家').trim().slice(0,24)||'匿名玩家';localStorage.setItem('bossHunter60_operator',operatorName);}
+
+function fresh(){return {channels:Array.from({length:60},(_,i)=>({id:i+1,lastDeath:null,lastStatus:'unknown',lastObserved:null,lastAbsent:null,lastPresent:null,observations:[],externalReset:false})),logs:[],kills:0,misses:0,session:{mode:'unlimited',duration:120,start:null,elapsedBefore:0,running:false,ended:false},settings:{travel:100,kill:30}}}
+function validState(x){return !!(x&&Array.isArray(x.channels)&&x.channels.length===60)}
+function load(){
+ try{
+  const raw=localStorage.getItem(KEY);
+  if(raw){const x=JSON.parse(raw);if(validState(x))return x;storageWarning='主数据格式异常，已尝试读取备份。请尽快导出数据。';}
+ }catch(e){storageWarning='主数据读取失败，已尝试读取备份。请尽快导出数据。';}
+ try{
+  const backup=localStorage.getItem(BACKUP_KEY);
+  if(backup){const x=JSON.parse(backup);if(validState(x)){storageWarning=storageWarning||'已从本地备份恢复数据，建议立即导出备份。';return x;}}
+ }catch(e){storageWarning='本地数据和备份均无法读取，请勿清理浏览器数据。';}
+ return fresh();
+}
+function save(){
+ try{
+  const raw=JSON.stringify(state);
+  localStorage.setItem(KEY,raw);localStorage.setItem(BACKUP_KEY,raw);
+  const el=document.getElementById('saveStatus');if(el){el.textContent=remoteReady?'正在同步…':'本机已保存';el.title='本机备份已保存；云端同步状态见提示';}
+  if(remoteReady)queueRemoteSave();
+  return true;
+ }catch(e){const el=document.getElementById('saveStatus');if(el){el.textContent='保存失败，请立即导出';el.title=String(e);}return false;}
+}
+let saveTimer=null;
+function queueRemoteSave(){clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{if(!remoteReady)return;try{const r=await fetch('/api/state',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({state})});if(!r.ok)throw new Error('HTTP '+r.status);const el=document.getElementById('saveStatus');if(el){el.textContent='云端已同步';el.title='共享数据已保存到Cloudflare D1';}}catch(e){const el=document.getElementById('saveStatus');if(el){el.textContent='云端同步失败';el.title='本机备份仍在，网络恢复后请刷新重试';}}},250);}
+async function syncFromCloud(initial=false){if(remoteBusy)return;remoteBusy=true;try{const r=await fetch('/api/state');if(!r.ok)throw new Error('HTTP '+r.status);const data=await r.json();if(data.state&&validState(data.state)){state=data.state;localStorage.setItem(KEY,JSON.stringify(state));localStorage.setItem(BACKUP_KEY,JSON.stringify(state));render();}else if(initial){await fetch('/api/state',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({state})});}remoteReady=true;updateSaveStatus();}catch(e){const el=document.getElementById('saveStatus');if(el){el.textContent='云端连接失败';el.title=String(e);}}finally{remoteBusy=false;}}
+
+function updateSaveStatus(){const el=document.getElementById('saveStatus');if(!el)return;if(storageWarning){el.textContent='本地数据恢复提醒';el.title=storageWarning;}else if(remoteReady){el.textContent='云端已连接';el.title='所有玩家共享同一份云端数据';}else{el.textContent='正在连接云端…';el.title='本机备份已启用';}}
+function ch(id){return state.channels[id-1]}
+function addLog(id,action,detail,t=now()){state.logs.unshift({t,id,action,detail,operator:operatorName});state.logs=state.logs.slice(0,500)}
+function toast(s){const e=document.getElementById('toast');e.textContent=s;e.style.display='block';setTimeout(()=>e.style.display='none',2200)}
+function elapsed(){const s=state.session;return s.elapsedBefore+(s.running&&s.start?now()-s.start:0)}
+function fmtDur(ms){let sec=Math.floor(ms/1000);return `${pad(Math.floor(sec/3600))}:${pad(Math.floor(sec%3600/60))}:${pad(sec%60)}`}
+function probability(c,arrival){
+ if(!c.lastDeath||c.externalReset)return null;
+ const age=(arrival-c.lastDeath)/60000;
+ const lo=Math.max(40,c.lastAbsent?((c.lastAbsent-c.lastDeath)/60000):40);
+ const hi=60;
+ if(age<lo)return 0;
+ if(age>=hi)return 1;
+ return Math.max(0,Math.min(1,(age-lo)/(hi-lo)));
+}
+function bounds(c){
+ if(!c.lastDeath)return '未知';
+ const lo=new Date(c.lastDeath+40*60000), hi=new Date(c.lastDeath+60*60000);
+ return `${lo.toLocaleTimeString('zh-CN',{hour12:false})}–${hi.toLocaleTimeString('zh-CN',{hour12:false})}`;
+}
+function recommendation(){
+ const travel=Number(state.settings.travel)||0, kill=Number(state.settings.kill)||0;
+ const arrival=now()+travel*1000;
+ let candidates=state.channels.map(c=>{
+  const p=probability(c,arrival);
+  let score,reason;
+  if(c.lastStatus==='present'&&c.lastObserved&&now()-c.lastObserved<30*60000){score=1;reason='最近确认存在，优先回访';}
+  else if(p!==null){score=p;reason=`抵达时刷新概率约${Math.round(p*100)}%`;}
+  else if(c.lastStatus==='absent'&&c.lastAbsent){const age=mins(now()-c.lastAbsent);score=0.01+Math.min(0.03,age/60*0.03);reason=`上次确认未刷新已过${Math.round(age)}分钟；死亡时间未知，按回访间隔排序`;}
+  else {score=0.05;reason='尚无记录，优先探索以建立基线';}
+  // Recently known present can be gone due to external players; decay confidence with age.
+  if(c.lastStatus==='present'&&c.lastObserved){
+    const age=mins(now()-c.lastObserved);
+    score=Math.max(0.05,Math.exp(-age/25));
+    reason=`${Math.round(score*100)}%探索优先级（${Math.round(age)}分钟前确认存在；可能已被击杀）`;
+  }
+  return {id:c.id,p:score,reason,c};
+ }).sort((a,b)=>b.p-a.p || (a.c.lastObserved||0)-(b.c.lastObserved||0));
+ return {best:candidates[0],alt:candidates[1],top5:candidates.slice(0,5),arrival,travel,kill};
+}
+function render(){
+ document.getElementById('kills').textContent=state.kills;
+ document.getElementById('misses').textContent=state.misses;
+ document.getElementById('tracked').textContent=state.channels.filter(c=>c.lastStatus!=='unknown').length+'/60';
+ document.getElementById('elapsed').textContent=fmtDur(elapsed()).slice(0,5);
+ const s=state.session, total=s.mode==='fixed'?s.duration*60000:null, rem=total===null?null:Math.max(0,total-elapsed());
+ document.getElementById('sessionText').textContent=s.running?(s.mode==='fixed'?`本轮进行中｜剩余 ${fmtDur(rem)}｜结束前请确保剩余时间足够完成移动+击杀。`:`本轮进行中｜不限时。`):s.ended?'本轮已结束。':s.start?'本轮已暂停。':'尚未开始本轮。';
+ const r=recommendation();
+ document.getElementById('recChannel').textContent=`${r.best.id} 频道`;
+ document.getElementById('recReason').textContent=`${r.best.reason}。预计抵达 ${fmt(r.arrival)}。移动${r.travel}秒，独立击杀预计再需${r.kill}秒。`;
+ document.getElementById('altText').textContent=`推荐顺序：${r.top5.map((x,i)=>`${i+1}. ${x.id}频道`).join('　')}`;
+ document.getElementById('recList').innerHTML=r.top5.map((x,i)=>`<li><span class="rec-rank">${i+1}</span><span class="rec-detail"><strong>${x.id}频道</strong><small>${x.reason}｜预计抵达 ${fmt(r.arrival)}</small></span></li>`).join('');
+ document.getElementById('selectRec').dataset.id=r.top5[0].id;document.getElementById('selectAlt').dataset.id=r.top5[1].id;
+ const filter=document.getElementById('filter').value;
+ let arr=state.channels.filter(c=>filter==='all'||(filter==='unknown'?c.lastStatus==='unknown':c.lastStatus===filter));
+ if(!sortAsc)arr.reverse();
+ document.getElementById('channelGrid').innerHTML=arr.map(c=>`<div class="ch ${c.lastStatus} ${selected===c.id?'selected':''}" data-id="${c.id}"><strong>${pad(c.id)}</strong><small>${c.lastStatus==='present'?'有BOSS':c.lastStatus==='absent'?'未刷新':'未知'}</small></div>`).join('');
+ document.getElementById('detailBody').innerHTML=state.channels.map(c=>{
+  const p=probability(c,now()+Number(state.settings.travel)*1000);
+  let status=c.lastStatus==='present'?'<span class="tag green">有BOSS</span>':c.lastStatus==='absent'?'<span class="tag">未刷新</span>':'<span class="tag">未知</span>';
+  let pred=p===null?'暂无可靠概率':Math.round(p*100)+'%（抵达时）';
+  if(c.externalReset)pred='疑似外部击杀，需重新校准';
+  return `<tr><td>${pad(c.id)}</td><td>${status}</td><td>${fmt(c.lastDeath)}</td><td>${bounds(c)}</td><td>${pred}</td></tr>`;
+ }).join('');
+ document.getElementById('logBody').innerHTML=state.logs.slice(0,100).map(l=>`<tr><td>${fmt(l.t)}</td><td>${pad(l.id)}</td><td>${l.action}</td><td>${l.detail||''}</td></tr>`).join('');
+ document.getElementById('channelSelect').value=selected;
+ const c=ch(selected);
+ document.getElementById('selectedInfo').textContent=`${selected}频道｜最近状态：${c.lastStatus==='present'?'有BOSS':c.lastStatus==='absent'?'未刷新':'未知'}｜上次观察：${fmt(c.lastObserved)}｜上次死亡：${fmt(c.lastDeath)}｜刷新区间：${bounds(c)}`;
+ document.getElementById('mode').value=s.mode;document.getElementById('duration').value=s.duration;
+ document.getElementById('durationWrap').style.display=s.mode==='fixed'?'flex':'none';
+ document.getElementById('travel').value=state.settings.travel;document.getElementById('kill').value=state.settings.kill;
+}
+function recordTimestamp(){
+ const manual=document.getElementById('manualTimeEnabled').checked;
+ if(!manual)return now();
+ const value=document.getElementById('recordTime').value;
+ if(!value){alert('请先选择手动记录的日期和时间');return null;}
+ const t=new Date(value).getTime();
+ if(!Number.isFinite(t)){alert('手动记录时间无效，请重新选择');return null;}
+ return t;
+}
+function observe(status){
+ const t=recordTimestamp();if(t===null)return;
+ const c=ch(selected);c.lastStatus=status;c.lastObserved=t;c.observations.push({t,status});c.observations=c.observations.slice(-100);
+ if(status==='absent'){
+  state.misses++;c.lastAbsent=t;
+  if(c.lastDeath&&t>c.lastDeath+60*60000){c.externalReset=true;addLog(selected,'未刷新','已超过原死亡时间+60分钟仍未刷新：可能发生外部击杀，刷新模型需重新校准',t);}
+  else addLog(selected,'未刷新','记录本次确认未刷新时间',t);
+ }else{
+  c.lastPresent=t;c.externalReset=false;addLog(selected,'发现BOSS','记录抵达时确认BOSS存在',t);
+ }
+ save();render();toast(status==='absent'?'已记录未刷新':'已记录BOSS存在');
+}
+function kill(){
+ const t=recordTimestamp();if(t===null)return;
+ const c=ch(selected);
+ c.lastDeath=t;c.lastStatus='absent';c.lastObserved=t;c.lastAbsent=t;c.lastPresent=null;c.externalReset=false;
+ state.kills++;addLog(selected,'击杀成功','记录本次BOSS死亡时间，刷新计时重新开始',t);save();render();toast('击杀时间已记录');
+}
+function start(){
+ const s=state.session;
+ if(s.ended){state.session={mode:document.getElementById('mode').value,duration:Number(document.getElementById('duration').value)||120,start:now(),elapsedBefore:0,running:true,ended:false};}
+ else if(!s.running){s.mode=document.getElementById('mode').value;s.duration=Number(document.getElementById('duration').value)||120;s.start=now();s.running=true;}
+ save();render();
+}
+function pause(){const s=state.session;if(s.running){s.elapsedBefore+=now()-s.start;s.start=null;s.running=false;save();render();}}
+function end(){pause();state.session.ended=true;save();render();}
+document.getElementById('manualTimeEnabled').onchange=e=>{const enabled=e.target.checked;const input=document.getElementById('recordTime');input.disabled=!enabled;if(enabled&&!input.value)input.value=toLocalInput(now());};
+document.getElementById('recordTime').value=toLocalInput(now());
+document.getElementById('presentBtn').onclick=()=>observe('present');
+document.getElementById('absentBtn').onclick=()=>observe('absent');
+document.getElementById('killBtn').onclick=()=>kill();
+document.getElementById('channelSelect').onchange=e=>{selected=Number(e.target.value);render()};
+document.getElementById('channelGrid').onclick=e=>{const n=e.target.closest('[data-id]');if(n){selected=Number(n.dataset.id);render()}};
+document.getElementById('filter').onchange=render;
+document.getElementById('sortBtn').onclick=()=>{sortAsc=!sortAsc;render()};
+document.getElementById('selectRec').onclick=()=>{selected=Number(document.getElementById('selectRec').dataset.id);render()};
+document.getElementById('selectAlt').onclick=()=>{selected=Number(document.getElementById('selectAlt').dataset.id);render()};
+document.getElementById('mode').onchange=e=>{state.session.mode=e.target.value;save();render()};
+document.getElementById('duration').onchange=e=>{state.session.duration=Math.max(1,Number(e.target.value)||120);save();render()};
+document.getElementById('travel').onchange=e=>{state.settings.travel=Math.max(0,Number(e.target.value)||0);save();render()};
+document.getElementById('kill').onchange=e=>{state.settings.kill=Math.max(0,Number(e.target.value)||0);save();render()};
+document.getElementById('startSession').onclick=start;document.getElementById('pauseSession').onclick=pause;document.getElementById('endSession').onclick=end;
+document.getElementById('exportBtn').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='boss-hunter-backup.json';a.click();URL.revokeObjectURL(a.href)};
+document.getElementById('importBtn').onclick=()=>document.getElementById('fileInput').click();
+document.getElementById('fileInput').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const x=JSON.parse(await f.text());if(!x.channels||x.channels.length!==60)throw Error();state=x;save();render();toast('数据导入成功')}catch(err){alert('文件格式不正确，未能导入')}};
+document.getElementById('resetBtn').onclick=()=>{if(confirm('确定清空全部频道记录、击杀统计和游戏计时？建议先导出备份。')){state=fresh();selected=1;save();render();updateSaveStatus();}};
+for(let i=1;i<=60;i++){const o=document.createElement('option');o.value=i;o.textContent=`${i}频道`;document.getElementById('channelSelect').appendChild(o)}
+render();updateSaveStatus();
+syncFromCloud(true);setInterval(()=>syncFromCloud(false),4000);
+if(storageWarning){setTimeout(()=>alert(storageWarning),300);}
+// 关闭或刷新页面时，自动暂停本轮计时并保存已累计时长，频道记录不会清空。
+window.addEventListener('pagehide',()=>{if(state.session.running){state.session.elapsedBefore+=now()-state.session.start;state.session.start=null;state.session.running=false;}save();});
+ticker=setInterval(()=>{if(state.session.running){if(state.session.mode==='fixed'&&elapsed()>=state.session.duration*60000){state.session.elapsedBefore=state.session.duration*60000;state.session.running=false;state.session.start=null;state.session.ended=true;save()}render()}},1000);
+</script>
+</body></html>

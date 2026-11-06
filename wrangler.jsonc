@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "boss-hunter-60",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-06",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "boss-hunter-db",
+      "database_id": "请替换为Cloudflare显示的Database ID"
+    }
+  ]
+}

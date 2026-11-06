@@ -1,9 +1,7 @@
 {
-  "name": "boss-hunter-60",
+  "name": "boss-hunter-60-cloudflare",
   "version": "1.0.0",
   "private": true,
-  "description": "60-channel shared BOSS respawn tracker",
-  "main": "server.js",
-  "scripts": {"start": "node server.js"},
-  "dependencies": {"express": "^4.21.2", "pg": "^8.13.1"}
+  "scripts": { "deploy": "wrangler deploy" },
+  "devDependencies": { "wrangler": "^4.45.0" }
 }
